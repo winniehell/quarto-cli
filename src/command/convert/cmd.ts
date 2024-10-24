@@ -1,14 +1,14 @@
 /*
  * cmd.ts
  *
- * Copyright (C) 2020-2022 Posit Software, PBC
+ * Copyright (C) 2020-2024 Posit Software, PBC
  */
 
 import { existsSync } from "../../deno_ral/fs.ts";
 import { join } from "../../deno_ral/path.ts";
 import { info } from "../../deno_ral/log.ts";
 
-import { Command } from "cliffy/command/mod.ts";
+import { Command, Option } from "npm:clipanion";
 import { isJupyterNotebook } from "../../core/jupyter/jupyter.ts";
 import { dirAndStem } from "../../core/path.ts";
 import {
@@ -20,56 +20,54 @@ import { initYamlIntelligenceResourcesFromFilesystem } from "../../core/schema/u
 const kNotebookFormat = "notebook";
 const kMarkdownFormat = "markdown";
 
-export const convertCommand = new Command()
-  .name("convert")
-  .arguments("<input:string>")
-  .description(
-    "Convert documents to alternate representations.",
-  )
-  .option(
-    "-o, --output [path:string]",
-    "Write output to PATH.",
-  )
-  .option(
-    "--with-ids",
-    "Include ids in conversion",
-  )
-  .example(
-    "Convert notebook to markdown",
-    "quarto convert mydocument.ipynb ",
-  )
-  .example(
-    "Convert markdown to notebook",
-    "quarto convert mydocument.qmd",
-  )
-  .example(
-    "Convert notebook to markdown, writing to file",
-    "quarto convert mydocument.ipynb --output mydoc.qmd",
-  )
-  // deno-lint-ignore no-explicit-any
-  .action(async (options: any, input: string) => {
+export class ConvertCommand extends Command {
+  static name = 'convert';
+  static paths = [[ConvertCommand.name]];
+
+  static usage = Command.Usage({
+    description: "Convert documents to alternate representations.",
+    examples: [
+      [
+        "Convert notebook to markdown",
+        `$0 ${ConvertCommand.name} mydocument.ipynb`,
+      ], [
+        "Convert markdown to notebook",
+        `$0 ${ConvertCommand.name} mydocument.qmd`,
+      ], [
+        "Convert notebook to markdown, writing to file",
+        `$0 ${ConvertCommand.name} mydocument.ipynb --output mydoc.qmd`,
+      ]
+    ]
+  })
+
+  input = Option.String({ required: true });
+
+  output = Option.String("-o,--output", { description: "Write output to PATH." });
+  withIds = Option.Boolean("--with-ids", { description: "Include ids in conversion" });
+
+  async execute() {
     await initYamlIntelligenceResourcesFromFilesystem();
 
-    if (!existsSync(input)) {
-      throw new Error(`File not found: '${input}'`);
+    if (!existsSync(this.input)) {
+      throw new Error(`File not found: '${this.input}'`);
     }
 
     // determine source format
-    const srcFormat = isJupyterNotebook(input)
+    const srcFormat = isJupyterNotebook(this.input)
       ? kNotebookFormat
       : kMarkdownFormat;
 
     // are we converting ids?
-    const withIds = options.withIds === undefined ? false : !!options.withIds;
+    const withIds = this.withIds === undefined ? false : !!this.withIds;
 
     // perform conversion
     const converted = srcFormat === kNotebookFormat
-      ? await jupyterNotebookToMarkdown(input, withIds)
-      : await markdownToJupyterNotebook(input, withIds);
+      ? await jupyterNotebookToMarkdown(this.input, withIds)
+      : await markdownToJupyterNotebook(this.input, withIds);
 
     // write output
-    const [dir, stem] = dirAndStem(input);
-    let output = options.output;
+    const [dir, stem] = dirAndStem(this.input);
+    let output = this.output;
     if (!output) {
       output = join(
         dir,
@@ -78,4 +76,5 @@ export const convertCommand = new Command()
     }
     Deno.writeTextFileSync(output, converted);
     info(`Converted to ${output}`);
-  });
+  }
+}
